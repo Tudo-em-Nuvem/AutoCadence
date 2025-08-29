@@ -1,0 +1,247 @@
+
+from tkinter import Tk, Label, Button, Frame, Text, Scrollbar, filedialog, messagebox, ttk
+from repository.usuario_repositorio import UsuarioRepositorio
+from windows.configuracao_janela import ConfiguracaoJanela
+from windows.log_janela import LogJanela
+from services.processador_excel import processar_excel
+from utils.substituicao import substituir_variaveis_no_texto
+import threading
+import pandas as pd
+
+class ControleProcessamento:
+  def __init__(self):
+    self.ativo = False
+
+class App(Tk):
+  _last_instance = None
+  def __init__(self):
+    App._last_instance = self
+    super().__init__()
+    
+    self.title('AutoCadence App')
+    self.geometry('700x500')
+    self.configure(bg='#23272f')
+    self.resizable(True, True)
+
+    self.usuario_repo = UsuarioRepositorio()
+    self.controle = ControleProcessamento()
+    
+    self.caminho_excel = None
+    self.log_window = None
+    self.df = None
+    
+    self.total_linhas = 0
+    self.linha_atual = 0
+
+    card = Frame(self, bg='#2c2f38', bd=2, relief='groove')
+    card.pack(pady=10, padx=20, fill='both', expand=True)
+
+    # Frame para botões
+    frame_botoes = Frame(card, bg='#2c2f38')
+    frame_botoes.pack(side='top', fill='x', pady=(10, 0))
+
+    self.btn_excel = Button(frame_botoes, text='Selecionar arquivo Excel', font=('Segoe UI', 12), command=self.selecionar_arquivo_excel, bg='#f5c518', fg='#23272f', activebackground='#ffe066', activeforeground='#23272f', bd=0, padx=10, pady=8)
+    self.btn_excel.pack(side='left', padx=10)
+
+    self.btn_run = Button(frame_botoes, text='▶️', font=('Segoe UI Symbol', 16), command=self.alternar_estado_processamento, state='disabled', bg='#23272f', fg='#f5c518', activebackground='#23272f', activeforeground='#ffe066', bd=0, padx=10, pady=8)
+    self.btn_run.pack(side='left', padx=10)
+
+    self.btn_config = Button(frame_botoes, text='⚙️', font=('Segoe UI Symbol', 16), command=self.abrir_janela_configuracoes, bg='#23272f', fg='#b0b3b8', activebackground='#23272f', activeforeground='#f5c518', bd=0, padx=10, pady=8)
+    self.btn_config.pack(side='right', padx=10)
+    Button(frame_botoes, text='Fechar', command=self.destroy, font=('Segoe UI', 12), bg='#23272f', fg='#b0b3b8', activebackground='#23272f', activeforeground='#f5c518', bd=0, padx=10, pady=8).pack(side='right', padx=10)
+
+    # Label do contador de progresso
+    self.label_progresso = Label(card, text='Progresso: 0/0', font=('Segoe UI', 11), bg='#2c2f38', fg='#f5c518')
+    self.label_progresso.pack(side='top', anchor='w', padx=10, pady=(0, 5))
+
+    # Frame para campo de texto e exemplo
+    frame_texto = Frame(card, bg='#2c2f38')
+    frame_texto.pack(side='top', fill='both', expand=True, padx=10, pady=(10, 10))
+
+    # Dropdown para coluna de e-mail (inicialmente oculto)
+    self.email_col_label = Label(frame_texto, text='Selecione a coluna de e-mail:', font=('Segoe UI', 11), bg='#2c2f38', fg='#b0b3b8')
+    self.email_col_label.pack_forget()
+    self.email_col_combobox = ttk.Combobox(frame_texto, state='readonly', font=('Segoe UI', 11))
+    self.email_col_combobox.pack_forget()
+    self.coluna_email_selecionada = None
+    self.email_col_combobox.bind('<<ComboboxSelected>>', lambda e: self.atualizar_estado_botao_run())
+
+    # Campo para título do e-mail
+    self.titulo_label = Label(frame_texto, text='Título do e-mail:', font=('Segoe UI', 11), bg='#2c2f38', fg='#b0b3b8')
+    self.titulo_label.pack(anchor='w', pady=(0,2))
+    self.titulo_entry = Text(frame_texto, height=2, font=('Segoe UI', 11), bg='#23272f', fg='#f5c518', insertbackground='#f5c518', bd=0, wrap='word')
+    self.titulo_entry.pack(fill='both', expand=False, pady=(0,8))
+    self.titulo_entry.bind('<KeyRelease>', lambda e: self.atualizar_estado_botao_run())
+
+    # Campo para corpo do texto
+    self.texto_label = Label(frame_texto, text='Corpo do e-mail:', font=('Segoe UI', 11), bg='#2c2f38', fg='#b0b3b8')
+    self.texto_label.pack(anchor='w', pady=(0,2)) 
+    self.texto_entry = Text(frame_texto, height=5, font=('Segoe UI', 11), bg='#23272f', fg='#f5c518', insertbackground='#f5c518', bd=0, wrap='word')
+    self.texto_entry.pack(fill='both', expand=True, pady=(0,8))
+    self.texto_entry.bind('<KeyRelease>', lambda e: self.atualizar_estado_botao_run())
+
+    # Exemplo
+    exemplo_frame = Frame(frame_texto, bg='#2c2f38')
+    exemplo_frame.pack(fill='both', expand=True, pady=(0,8))
+    self.exemplo_text = Text(exemplo_frame, height=5, font=('Segoe UI', 10), bg='#23272f', fg='#ffe066', wrap='word', bd=0, state='disabled')
+    self.exemplo_text.pack(side='left', fill='both', expand=True)
+    exemplo_scroll = Scrollbar(exemplo_frame, command=self.exemplo_text.yview)
+    exemplo_scroll.pack(side='right', fill='y')
+    self.exemplo_text.config(yscrollcommand=exemplo_scroll.set)
+
+  def selecionar_arquivo_excel(self):
+    file_path = filedialog.askopenfilename(
+      title='Selecione um arquivo Excel',
+      filetypes=[('Excel Files', '*.xlsx *.xls')]
+    )
+
+    if file_path:
+      self.caminho_excel = file_path
+      messagebox.showinfo('Arquivo selecionado', f'Arquivo selecionado:\n{file_path}')
+      self.btn_run.config(state='disabled')
+
+      # Carrega DataFrame para exemplo e atualiza contador
+      try:
+        self.df = pd.read_excel(file_path)
+        self.total_linhas = len(self.df)
+        self.linha_atual = 0
+
+        # Atualiza dropdown de colunas
+        colunas = list(self.df.columns)
+        self.email_col_combobox['values'] = colunas
+        self.email_col_combobox.set('')
+
+        # Garante que o dropdown apareça antes do campo de título
+        self.email_col_label.pack_forget()
+        self.email_col_combobox.pack_forget()
+        self.email_col_label.pack(anchor='w', pady=(0,2), before=self.titulo_label)
+        self.email_col_combobox.pack(fill='x', pady=(0,8), before=self.titulo_label)
+
+      except Exception:
+        self.df = None
+        self.total_linhas = 0
+        self.linha_atual = 0
+        self.email_col_label.pack_forget()
+        self.email_col_combobox.pack_forget()
+
+    self.atualizar_exemplo_preview()
+    self.atualizar_contador_progresso()
+    self.atualizar_estado_botao_run()
+
+  def on_email_col_selected(self, event):
+    self.coluna_email_selecionada = self.email_col_combobox.get()
+    self.atualizar_estado_botao_run()
+
+  def on_text_fields_changed(self, event):
+    self.atualizar_estado_botao_run()
+
+  def atualizar_estado_botao_run(self, event=None):
+    titulo = self.titulo_entry.get('1.0', 'end').strip()
+    corpo = self.texto_entry.get('1.0', 'end').strip()
+    
+    coluna_email = self.email_col_combobox.get().strip()
+    coluna_email_ok = coluna_email and self.df is not None and coluna_email in self.df.columns
+
+    auth = self.usuario_repo.get_auth() if hasattr(self.usuario_repo, 'get_auth') else {}
+    auth_ok = auth and 'EMAIL_ADDRESS' in auth and 'PASSWORD_EMAIL_ADDRESS' in auth and auth['EMAIL_ADDRESS'] and auth['PASSWORD_EMAIL_ADDRESS']
+    
+    if coluna_email_ok and titulo and corpo and auth_ok:
+      self.btn_run.config(state='normal')
+    else:
+      self.btn_run.config(state='disabled')
+
+  def alternar_estado_processamento(self):
+    titulo = self.titulo_entry.get('1.0', 'end').strip()
+    corpo = self.texto_entry.get('1.0', 'end').strip()
+
+    auth = self.usuario_repo.get_auth() if hasattr(self.usuario_repo, 'get_auth') else {}
+    if not titulo or not corpo or not auth or not auth.get('EMAIL_ADDRESS') or not auth.get('PASSWORD_EMAIL_ADDRESS'):
+      messagebox.showwarning('Campos obrigatórios', 'Preencha título, corpo e configure e-mail/senha antes de enviar!')
+      return
+    
+    if not self.controle.ativo:
+      self.controle.ativo = True
+      self.btn_run.config(text='⏸️')
+      self.abrir_janela_log()
+      self.iniciar_processo_envio()
+    else:
+      self.controle.ativo = False
+      self.btn_run.config(text='▶️')
+
+  def atualizar_contador_progresso(self):
+    self.label_progresso.config(text=f'Progresso: {self.linha_atual}/{self.total_linhas}')
+
+  # Mantém atualização do exemplo separada para garantir preview field
+  def atualizar_exemplo_preview(self):
+    texto = self.texto_entry.get('1.0', 'end').strip()
+    if hasattr(self, 'df') and self.df is not None and not self.df.empty and texto:
+      linha = self.df.sample(1).iloc[0].to_dict()
+      exemplo = self.substituir_variaveis_no_texto(texto, linha)
+      self.exemplo_text.config(state='normal')
+      self.exemplo_text.delete('1.0', 'end')
+      self.exemplo_text.insert('end', f'Exemplo: {exemplo}')
+      self.exemplo_text.config(state='disabled')
+    else:
+      self.exemplo_text.config(state='normal')
+      self.exemplo_text.delete('1.0', 'end')
+      self.exemplo_text.config(state='disabled')
+
+  # Usa função utilitária para garantir substituição consistente e testável
+  def substituir_variaveis_no_texto(self, texto, linha):
+    return substituir_variaveis_no_texto(texto, linha)
+
+  # Alterna estado para evitar múltiplas execuções simultâneas
+  def alternar_estado_processamento(self):
+    if not self.controle.ativo:
+      self.controle.ativo = True
+      self.btn_run.config(text='⏸️')
+      self.abrir_janela_log()
+      self.iniciar_processo_envio()
+    else:
+      self.controle.ativo = False
+      self.btn_run.config(text='▶️')
+
+  # Abre janela de log apenas se não estiver aberta, evitando múltiplas instâncias
+  def abrir_janela_log(self):
+    if self.log_window is None or not self.log_window.winfo_exists():
+      self.log_window = LogJanela(self)
+    self.titulo_entry.bind('<FocusOut>', self.atualizar_estado_botao_run)
+
+  # Centraliza envio de mensagens ao log
+  def registrar_log(self, mensagem):
+    if self.log_window and self.log_window.winfo_exists():
+      self.log_window.log(mensagem)
+    self.texto_entry.bind('<FocusOut>', self.atualizar_estado_botao_run)
+
+  # Inicia processamento em thread separada para não travar interface
+  def iniciar_processo_envio(self):
+    titulo = self.titulo_entry.get('1.0', 'end').strip()
+    corpo = self.texto_entry.get('1.0', 'end').strip()
+    auth = self.usuario_repo.get_auth() if hasattr(self.usuario_repo, 'get_auth') else {}
+    texto = corpo
+    
+    def processar():
+      def callback_linha(mensagem, linha_idx=None):
+        if linha_idx is not None:
+          self.linha_atual = linha_idx + 1
+          self.after(0, self.atualizar_contador_progresso)
+        self.after(0, lambda: self.registrar_log(mensagem))
+
+      # Passa titulo, corpo e auth como argumentos extras
+      processar_excel(self.caminho_excel, callback_linha, self.controle, texto, self.linha_atual, titulo, auth)
+
+    threading.Thread(target=processar, daemon=True).start()
+    self.email_col_combobox.bind('<FocusOut>', self.atualizar_estado_botao_run)
+
+  # Garante abertura controlada da janela de configurações
+  def abrir_janela_configuracoes(self):
+    ConfiguracaoJanela(self, self.usuario_repo)
+
+  # Centraliza binding de eventos para facilitar manutenção
+  def configurar_eventos(self):
+    self.texto_entry.bind('<KeyRelease>', lambda e: self.atualizar_exemplo_preview())
+
+if __name__ == '__main__':
+  app = App()
+  app.configurar_eventos()
+  app.mainloop()
