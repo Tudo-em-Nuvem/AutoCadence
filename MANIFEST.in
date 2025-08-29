@@ -1,0 +1,2 @@
+include src/app.py
+recursive-include src/utils *.py
