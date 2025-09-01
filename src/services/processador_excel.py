@@ -1,7 +1,7 @@
-
 import time
 from utils.substituicao import substituir_variaveis
 from services.excel_processor import ProcessadorExcel
+from services.cadencia_manager import CadenciaManager
 
 def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_processamento, corpo_email, linha_inicial=0, titulo_email='', autenticacao=None, remetente_email=None, nome_coluna_email=None):
     """
@@ -19,13 +19,18 @@ def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_p
     excel = ProcessadorExcel(caminho_arquivo_excel)
     excel.carregar()
     total_linhas = excel.obter_total_linhas()
+    processo_foi_pausado = False
+
+    # Instancia o novo gerenciador de cadência
+    cadencia_manager = CadenciaManager(funcao_callback, controle_processamento)
 
     for indice in range(linha_inicial, total_linhas):
-        linha = excel.obter_linha(indice)
         if not controle_processamento.ativo:
-            funcao_callback('Processamento pausado.', indice-1 if indice > 0 else 0)
+            funcao_callback('Processamento pausado.', indice - 1 if indice > 0 else 0)
+            processo_foi_pausado = True
             break
 
+        linha = excel.obter_linha(indice)
         funcao_callback(f'Tratando linha: {linha}', indice)
 
         # Recupera o destinatário do e-mail
@@ -63,8 +68,11 @@ def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_p
         except Exception as erro:
             funcao_callback(f'[ERRO] Falha ao enviar para {destinatario}: {erro}', indice)
 
-        # Aguarda 2 segundos entre envios para evitar bloqueios
-        time.sleep(2)
+        # Substitui o time.sleep() pela nova lógica de cadência
+        # Aguarda apenas se não for o último e-mail da lista
+        if indice < total_linhas - 1:
+            cadencia_manager.aguardar_proximo_passo()
 
-    # Informa que o processamento foi concluído
-    funcao_callback('Processamento concluído! Todos os e-mails foram enviados.', total_linhas)
+    if not processo_foi_pausado:
+        funcao_callback('Processamento concluído! Todos os e-mails foram enviados.', total_linhas)
+
