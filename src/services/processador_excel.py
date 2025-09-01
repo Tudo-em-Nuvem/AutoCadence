@@ -1,79 +1,70 @@
-import pandas as pd
+
 import time
-from utils.substituicao import substituir_variaveis_no_texto
-from utils.send_email import send_email
-import inspect
+from utils.substituicao import substituir_variaveis
+from services.excel_processor import ProcessadorExcel
 
-def processar_excel(caminho_arquivo, callback, controle, texto, linha_inicial=0, titulo='', auth=None):
+def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_processamento, corpo_email, linha_inicial=0, titulo_email='', autenticacao=None, remetente_email=None, nome_coluna_email=None):
     """
-    Carrega o arquivo Excel e percorre as linhas, chamando callback para cada linha.
-    O controle é um objeto com atributo 'ativo' para pausar/parar.
-    Permite retomar do ponto pausado.
+    Processa o arquivo Excel linha a linha e envia e-mails personalizados para cada destinatário.
+    - caminho_arquivo_excel: caminho do arquivo Excel a ser processado
+    - funcao_callback: função chamada para atualizar status/log
+    - controle_processamento: objeto para pausar ou parar processamento
+    - corpo_email: texto do corpo do e-mail, pode conter variáveis
+    - linha_inicial: linha de início do processamento
+    - titulo_email: título do e-mail, pode conter variáveis
+    - autenticacao: dados de autenticação do remetente
+    - remetente_email: objeto responsável por enviar e-mails
+    - nome_coluna_email: nome da coluna que contém os e-mails dos destinatários
     """
-    df = pd.read_excel(caminho_arquivo)
-    total = len(df)
-    coluna_email = None
+    excel = ProcessadorExcel(caminho_arquivo_excel)
+    excel.carregar()
+    total_linhas = excel.obter_total_linhas()
 
-    # Descobre a coluna de e-mail selecionada pelo usuário
-    if 'coluna_email' in globals():
-        coluna_email = globals()['coluna_email']
-    
-    args = inspect.getfullargspec(processar_excel).args
-    # Se vierem como argumentos extras
-    def get_arg(idx, default=None):
-        try:
-            return inspect.stack()[1].frame.f_locals.get(args[idx], default)
-        except Exception:
-            return default
-    # Recebe titulo e auth do caller
-    try:
-        titulo = get_arg(5, '')
-        auth = get_arg(6, {})
-    except Exception:
-        titulo = ''
-        auth = {}
-
-    for idx in range(linha_inicial, total):
-        row = df.iloc[idx]
-        if not controle.ativo:
-            callback('Processamento pausado.', idx-1 if idx > 0 else 0)
+    for indice in range(linha_inicial, total_linhas):
+        linha = excel.obter_linha(indice)
+        if not controle_processamento.ativo:
+            funcao_callback('Processamento pausado.', indice-1 if indice > 0 else 0)
             break
 
-        callback(f'Tratando linha: {dict(row)}', idx)
+        funcao_callback(f'Tratando linha: {linha}', indice)
 
-        # Recupera destinatário
-        to = None
-        if coluna_email and coluna_email in row:
-            to = row[coluna_email]
+        # Recupera o destinatário do e-mail
+        destinatario = None
+        if nome_coluna_email and nome_coluna_email in linha:
+            destinatario = linha[nome_coluna_email]
         else:
-            for col in ['email', 'Email', 'E-mail']:
-                if col in row:
-                    to = row[col]
+            for nome in ['email', 'Email', 'E-mail']:
+                if nome in linha:
+                    destinatario = linha[nome]
                     break
 
-        if not to or not isinstance(to, str) or '@' not in to:
-            callback(f'[ERRO] Nenhum e-mail válido encontrado na linha {idx+1}.', idx)
+        # Valida se o destinatário é um e-mail válido
+        if not destinatario or not isinstance(destinatario, str) or '@' not in destinatario:
+            funcao_callback(f'[ERRO] Nenhum e-mail válido encontrado na linha {indice+1}.', indice)
             continue
 
-        # Substitui variáveis do corpo/título usando função utilitária
-        corpo = substituir_variaveis_no_texto(texto, row.to_dict()) if texto else texto
-        titulo_final = substituir_variaveis_no_texto(titulo, row.to_dict()) if titulo else titulo
+        # Substitui variáveis no corpo e título do e-mail
+        corpo_personalizado = substituir_variaveis(corpo_email, linha) if corpo_email else corpo_email
+        titulo_personalizado = substituir_variaveis(titulo_email, linha) if titulo_email else titulo_email
 
-        if not titulo_final:
-            callback(f'[AVISO] Título do e-mail está vazio na linha {idx+1}.', idx)
-        if not corpo:
-            callback(f'[AVISO] Corpo do e-mail está vazio na linha {idx+1}.', idx)
-        if not auth or 'EMAIL_ADDRESS' not in auth or 'PASSWORD_EMAIL_ADDRESS' not in auth:
-            callback(f'[ERRO] Dados de autenticação incompletos: {auth}', idx)
+        if not titulo_personalizado:
+            funcao_callback(f'[AVISO] Título do e-mail está vazio na linha {indice+1}.', indice)
+        if not corpo_personalizado:
+            funcao_callback(f'[AVISO] Corpo do e-mail está vazio na linha {indice+1}.', indice)
+        if not autenticacao or 'EMAIL_ADDRESS' not in autenticacao or 'PASSWORD_EMAIL_ADDRESS' not in autenticacao:
+            funcao_callback(f'[ERRO] Dados de autenticação incompletos: {autenticacao}', indice)
 
-        callback(f'Enviando para: {to} | Título: {titulo_final} | Corpo: {corpo} | Auth: {auth}', idx)
+        funcao_callback(f'Enviando para: {destinatario} | Título: {titulo_personalizado} | Corpo: {corpo_personalizado} | Auth: {autenticacao}', indice)
         try:
-            send_email(to, auth, titulo_final, corpo)
-            callback(f'[OK] E-mail enviado com sucesso para: {to}', idx)
-        except Exception as e:
-            callback(f'[ERRO] Falha ao enviar para {to}: {e}', idx)
+            # Envia o e-mail usando o remetente injetado
+            if remetente_email:
+                remetente_email.enviar_email(destinatario, autenticacao, titulo_personalizado, corpo_personalizado)
+            funcao_callback(f'[OK] E-mail enviado com sucesso para: {destinatario}', indice)
+        except Exception as erro:
+            funcao_callback(f'[ERRO] Falha ao enviar para {destinatario}: {erro}', indice)
 
+        # Aguarda 2 segundos entre envios para evitar bloqueios
         time.sleep(2)
 
-    # Aviso de conclusão ao final do processamento
-    callback('Processamento concluído! Todos os e-mails foram enviados.', total)
+    # Informa que o processamento foi concluído
+    funcao_callback('Processamento concluído! Todos os e-mails foram enviados.', total_linhas)
