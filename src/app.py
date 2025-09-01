@@ -66,7 +66,6 @@ class App(Tk):
     self.config_handler = ConfigHandler(self, self.usuario_repo)
     card = Frame(self, bg='#2c2f38', bd=2, relief='groove')
     card.pack(pady=10, padx=20, fill='both', expand=True)
-    # Frame para botões
     frame_botoes = Frame(card, bg='#2c2f38')
     frame_botoes.pack(side='top', fill='x', pady=(10, 0))
     self.btn_excel = Button(frame_botoes, text='Selecionar arquivo Excel', font=('Segoe UI', 12), command=self.selecionar_arquivo_excel, bg='#f5c518', fg='#23272f', activebackground='#ffe066', activeforeground='#23272f', bd=0, padx=10, pady=8)
