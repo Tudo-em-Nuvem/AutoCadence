@@ -46,4 +46,3 @@ O AutoCadence é um aplicativo de desktop desenvolvido para automatizar o envio 
    - Clique no botão ▶️ para iniciar o envio. Uma janela de log será aberta para você acompanhar o progresso.
 
    - Para pausar, clique no botão de pausa (⏸️).
- ```
