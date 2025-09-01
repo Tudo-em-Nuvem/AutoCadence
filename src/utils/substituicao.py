@@ -1,14 +1,15 @@
 import re
 
-def substituir_variaveis_no_texto(texto, linha):
+def substituir_variaveis(texto: str, dados_linha: dict) -> str:
     """
-    Substitui variáveis no formato {{Nome}} pelo valor correspondente no dicionário linha.
-    Ignora case e espaços extras.
+    Substitui variáveis no formato {{Nome}} pelo valor correspondente no dicionário dados_linha.
+    Ignora maiúsculas/minúsculas e espaços extras.
+    Exemplo: "Olá {{Nome}}" -> "Olá João"
     """
     def substituir(match):
         chave = match.group(1).strip()
-        for k in linha.keys():
-            if k.lower() == chave.lower():
-                return str(linha[k])
+        for chave_dict in dados_linha.keys():
+            if chave_dict.lower() == chave.lower():
+                return str(dados_linha[chave_dict])
         return f'{{{{{chave}}}}}'
     return re.sub(r'\{\{\s*(.*?)\s*\}\}', substituir, texto)
