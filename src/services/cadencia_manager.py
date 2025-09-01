@@ -66,5 +66,5 @@ class CadenciaManager:
       return
 
     # Se não for hora de uma pausa longa, aguarda um intervalo curto e aleatório.
-    intervalo_curto_segundos = random.randint(5, 8)
+    intervalo_curto_segundos = random.randint(5, 10)
     self._aguardar_de_forma_interruptivel(intervalo_curto_segundos)
