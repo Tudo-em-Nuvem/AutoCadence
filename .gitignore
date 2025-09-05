@@ -6,3 +6,5 @@ dist
 .vscode
 *.egg-info
 .env
+dominios_permitidos.json
+*.spec
