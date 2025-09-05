@@ -33,7 +33,7 @@ class CadenciaManager:
     minutos_pausa = random.randint(3, 15)
     horario_retorno = datetime.now() + timedelta(minutes=minutos_pausa)
     self.funcao_callback(
-        f"[CADÊNCIA] Pausa automática iniciada. Duração: {minutos_pausa} minutos. Retorno previsto para as {horario_retorno.strftime('%H:%M:%S')}."
+      f"[CADÊNCIA] Pausa automática iniciada. Duração: {minutos_pausa} minutos. Retorno previsto para as {horario_retorno.strftime('%H:%M:%S')}."
     )
 
     self._aguardar_de_forma_interruptivel(minutos_pausa * 60)
