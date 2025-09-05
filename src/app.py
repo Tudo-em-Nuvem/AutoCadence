@@ -15,7 +15,7 @@ class EventBinder:
   def bind_all(self):
     self.app.texto_entry.bind('<KeyRelease>', lambda e: self.app.atualizar_exemplo_preview())
     self.app.titulo_entry.bind('<KeyRelease>', lambda e: self.app.atualizar_estado_botao_run())
-    self.app.email_col_combobox.bind('<<ComboboxSelected>>', lambda e: self.app.atualizar_estado_botao_run())
+    self.app.email_col_combobox.bind('<<ComboboxSelected>>', self.app.on_email_col_selected)
     self.app.email_col_combobox.bind('<FocusOut>', self.app.atualizar_estado_botao_run)
     self.app.titulo_entry.bind('<FocusOut>', self.app.atualizar_estado_botao_run)
     self.app.texto_entry.bind('<FocusOut>', self.app.atualizar_estado_botao_run)
@@ -123,7 +123,8 @@ class App(Tk):
         self.email_col_combobox.pack_forget()
         self.email_col_label.pack(anchor='w', pady=(0,2), before=self.titulo_label)
         self.email_col_combobox.pack(fill='x', pady=(0,8), before=self.titulo_label)
-      except Exception:
+      except Exception as e:
+        messagebox.showerror("Erro ao Carregar", f"Ocorreu um erro ao carregar o arquivo Excel: {e}")
         self.df = None
         self.total_linhas = 0
         self.linha_atual = 0
@@ -134,8 +135,29 @@ class App(Tk):
     self.atualizar_contador_progresso()
     self.atualizar_estado_botao_run()
 
-  def on_email_col_selected(self, event):
-    self.coluna_email_selecionada = self.email_col_combobox.get()
+  def on_email_col_selected(self, event=None):
+    """
+    Chamado quando o usuário seleciona a coluna de e-mail.
+    Remove duplicados e atualiza a UI.
+    """
+    coluna_selecionada = self.email_col_combobox.get()
+    
+    if not coluna_selecionada or self.excel_processor is None:
+      return
+
+    try:
+      removidos = self.excel_processor.remover_duplicados(coluna_selecionada)
+      if removidos > 0:
+        messagebox.showinfo(
+          "Limpeza de Duplicados",
+          f"{removidos} e-mail(s) duplicado(s) foram removidos da lista."
+        )
+        self.total_linhas = self.excel_processor.obter_total_linhas()
+        self.atualizar_contador_progresso()
+        self.atualizar_exemplo_preview()
+    except Exception as e:
+      messagebox.showerror("Erro ao Limpar", f"Ocorreu um erro ao remover e-mails duplicados: {e}")
+
     self.atualizar_estado_botao_run()
 
   def on_text_fields_changed(self, event):
@@ -147,7 +169,6 @@ class App(Tk):
     coluna_email = self.email_col_combobox.get().strip()
     auth = self.usuario_repo.obter_autenticacao() if hasattr(self.usuario_repo, 'obter_autenticacao') else {}
 
-    # Corrige ativação: considera DataFrame carregado e coluna válida
     coluna_email_ok = bool(coluna_email)
     if self.df is not None and hasattr(self.df, 'columns'):
       coluna_email_ok = coluna_email in self.df.columns
@@ -180,7 +201,6 @@ class App(Tk):
   def atualizar_contador_progresso(self):
     self.label_progresso.config(text=f'Progresso: {self.linha_atual}/{self.total_linhas}')
 
-  # Mantém atualização do exemplo separada para garantir preview field
   def atualizar_exemplo_preview(self):
     texto = self.texto_entry.get('1.0', 'end').strip()
     if hasattr(self, 'df') and self.df is not None and not self.df.empty and texto:
@@ -195,11 +215,9 @@ class App(Tk):
       self.exemplo_text.delete('1.0', 'end')
       self.exemplo_text.config(state='disabled')
 
-  # Usa função utilitária para garantir substituição consistente e testável
   def substituir_variaveis(self, texto, linha):
     return substituir_variaveis(texto, linha)
 
-  # Alterna estado para evitar múltiplas execuções simultâneas
   def alternar_estado_processamento(self):
     if not self.controle.ativo:
       self.controle.ativo = True
@@ -210,14 +228,12 @@ class App(Tk):
       self.controle.ativo = False
       self.btn_run.config(text='▶️')
 
-  # Abre janela de log apenas se não estiver aberta, evitando múltiplas instâncias
   def abrir_janela_log(self):
     self.log_handler.open_log_window()
 
   def registrar_log(self, mensagem):
     self.log_handler.log(mensagem)
 
-  # Inicia processamento em thread separada para não travar interface
   def iniciar_processo_envio(self):
     titulo = self.titulo_entry.get('1.0', 'end').strip()
     corpo = self.texto_entry.get('1.0', 'end').strip()
@@ -233,7 +249,7 @@ class App(Tk):
         self.after(0, lambda: self.registrar_log(mensagem))
 
       processar_e_enviar_emails(
-        self.caminho_excel,
+        self.excel_processor,
         callback_linha,
         self.controle,
         texto,
@@ -245,13 +261,10 @@ class App(Tk):
       )
 
     threading.Thread(target=processar, daemon=True).start()
-    self.email_col_combobox.bind('<FocusOut>', self.atualizar_estado_botao_run)
 
-  # Garante abertura controlada da janela de configurações
   def abrir_janela_configuracoes(self):
     self.config_handler.open_config_window()
 
-  # Centraliza binding de eventos para facilitar manutenção
   def configurar_eventos(self):
     self.texto_entry.bind('<KeyRelease>', lambda e: self.atualizar_exemplo_preview())
 
@@ -259,3 +272,4 @@ if __name__ == '__main__':
   app = App()
   app.event_binder.bind_all()
   app.mainloop()
+

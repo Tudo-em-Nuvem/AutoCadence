@@ -1,9 +1,8 @@
-import time
 from utils.substituicao import substituir_variaveis
 from services.excel_processor import ProcessadorExcel
 from services.cadencia_manager import CadenciaManager
 
-def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_processamento, corpo_email, linha_inicial=0, titulo_email='', autenticacao=None, remetente_email=None, nome_coluna_email=None):
+def processar_e_enviar_emails(excel: ProcessadorExcel, funcao_callback, controle_processamento, corpo_email, linha_inicial=0, titulo_email='', autenticacao=None, remetente_email=None, nome_coluna_email=None):
     """
     Processa o arquivo Excel linha a linha e envia e-mails personalizados para cada destinatário.
     - caminho_arquivo_excel: caminho do arquivo Excel a ser processado
@@ -16,8 +15,6 @@ def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_p
     - remetente_email: objeto responsável por enviar e-mails
     - nome_coluna_email: nome da coluna que contém os e-mails dos destinatários
     """
-    excel = ProcessadorExcel(caminho_arquivo_excel)
-    excel.carregar()
     total_linhas = excel.obter_total_linhas()
     processo_foi_pausado = False
 
@@ -75,4 +72,3 @@ def processar_e_enviar_emails(caminho_arquivo_excel, funcao_callback, controle_p
 
     if not processo_foi_pausado:
         funcao_callback('Processamento concluído! Todos os e-mails foram enviados.', total_linhas)
-

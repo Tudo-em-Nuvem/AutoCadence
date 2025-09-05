@@ -6,7 +6,6 @@ class ProcessadorExcel:
   Permite obter linhas, colunas e total de registros para processamento.
   """
   def __init__(self, caminho_arquivo):
-    # Salva o caminho do arquivo Excel
     self.caminho_arquivo = caminho_arquivo
     self.dataframe = None
 
@@ -32,3 +31,25 @@ class ProcessadorExcel:
     if self.dataframe is not None:
       return list(self.dataframe.columns)
     return []
+
+  def remover_duplicados(self, nome_coluna_email: str) -> int:
+    """
+    Remove linhas duplicadas com base na coluna de e-mail especificada.
+    A remoção é feita diretamente no DataFrame interno da classe.
+
+    Args:
+      nome_coluna_email (str): O nome da coluna a ser verificada para duplicatas.
+
+    Returns:
+      int: O número de linhas duplicadas que foram removidas.
+    """
+    if self.dataframe is None or nome_coluna_email not in self.dataframe.columns:
+      return 0
+    
+    linhas_originais = len(self.dataframe)
+    # Remove duplicatas baseadas na coluna de e-mail, mantendo a primeira ocorrência.
+    # A opção inplace=True modifica o dataframe diretamente.
+    self.dataframe.drop_duplicates(subset=[nome_coluna_email], keep='first', inplace=True)
+    linhas_finais = len(self.dataframe)
+    
+    return linhas_originais - linhas_finais
