@@ -117,7 +117,7 @@ class App(Tk):
         self.total_linhas = self.excel_processor.obter_total_linhas()
         self.linha_atual = 0
         colunas = self.excel_processor.obter_colunas()
-        self.email_col_combobox['values'] = colunas
+        self.email_col_combobox['values'] = colunas 
         self.email_col_combobox.set('')
         self.email_col_label.pack_forget()
         self.email_col_combobox.pack_forget()
@@ -217,16 +217,6 @@ class App(Tk):
 
   def substituir_variaveis(self, texto, linha):
     return substituir_variaveis(texto, linha)
-
-  def alternar_estado_processamento(self):
-    if not self.controle.ativo:
-      self.controle.ativo = True
-      self.btn_run.config(text='⏸️')
-      self.abrir_janela_log()
-      self.iniciar_processo_envio()
-    else:
-      self.controle.ativo = False
-      self.btn_run.config(text='▶️')
 
   def abrir_janela_log(self):
     self.log_handler.open_log_window()
